@@ -32,19 +32,7 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Run API tests
-        run: npm run test:api
-        continue-on-error: true
-
-      - name: Run UI tests (positive)
-        run: npm run test:positive
-        continue-on-error: true
-
-      - name: Run UI tests (negative)
-        run: npm run test:negative
-        continue-on-error: true
-
-      - name: Run all tests
+      - name: Run all tests with reporters
         run: npm test -- --reporter=html,json,junit
         continue-on-error: true
 
