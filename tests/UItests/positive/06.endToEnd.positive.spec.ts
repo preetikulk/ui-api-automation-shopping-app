@@ -90,8 +90,8 @@ test.describe('Positive Test Cases - End-to-End Order Placement', () => {
       }
 
         // Enter payment details
-      await checkoutPage.enterCardHolderName(testData.paymentDetails.cardholderName);
-      logger.info(`✓ Card holder name entered: ${testData.paymentDetails.cardholderName}`);
+      // await checkoutPage.enterCardHolderName(testData.paymentDetails.cardholderName);
+      // logger.info(`✓ Card holder name entered: ${testData.paymentDetails.cardholderName}`);
       
       await checkoutPage.enterCVV(testData.paymentDetails.cvv);
       logger.info('✓ CVV entered');

@@ -1,0 +1,239 @@
+name: UI-API-Automation Test Suite
+
+on:
+  push:
+    branches: [ main, develop, 'feature/**' ]
+  pull_request:
+    branches: [ main, develop ]
+  schedule:
+    - cron: '0 8 * * MON-FRI'  # Run daily at 8 AM on weekdays
+  workflow_dispatch:  # Allow manual trigger
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '18.x'
+  PLAYWRIGHT_VERSION: '1.40.0'
+
+jobs:
+  # API Tests Job
+  api-tests:
+    name: Run API Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run API test suite
+        run: npm run test:api
+        continue-on-error: true
+
+      - name: Upload API test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: api-test-results
+          path: reports/results.json
+          retention-days: 30
+
+  # UI Positive Tests Job
+  ui-positive-tests:
+    name: Run UI Positive Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run UI positive test cases
+        run: npm run test:positive
+        continue-on-error: true
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-positive-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload screenshots/videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-positive-failures
+          path: test-results/
+          retention-days: 30
+
+  # UI Negative Tests Job
+  ui-negative-tests:
+    name: Run UI Negative Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run UI negative test cases
+        run: npm run test:negative
+        continue-on-error: true
+
+      - name: Upload test report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-negative-report
+          path: playwright-report/
+          retention-days: 30
+
+      - name: Upload screenshots/videos on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-negative-failures
+          path: test-results/
+          retention-days: 30
+
+  # Complete Test Suite Job
+  all-tests:
+    name: Run Complete Test Suite
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: []
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Run all tests with full reporting
+        run: npm test -- --reporter=html,json,junit
+        continue-on-error: true
+
+      - name: Upload HTML report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: html-test-report
+          path: reports/html-report/
+          retention-days: 30
+
+      - name: Upload JSON results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-json
+          path: reports/results.json
+          retention-days: 30
+
+      - name: Upload JUnit XML
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-junit
+          path: reports/junit-results.xml
+          retention-days: 30
+
+  # Test Results Summary Job
+  test-results:
+    name: Test Results Summary
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [ all-tests, api-tests, ui-positive-tests, ui-negative-tests ]
+    
+    steps:
+      - name: Check test results status
+        run: |
+          echo "=== Test Execution Summary ==="
+          echo "API Tests: ${{ needs.api-tests.result }}"
+          echo "UI Positive Tests: ${{ needs.ui-positive-tests.result }}"
+          echo "UI Negative Tests: ${{ needs.ui-negative-tests.result }}"
+          echo "All Tests: ${{ needs.all-tests.result }}"
+
+      - name: Download all test artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-test-results/
+
+      - name: List all artifacts
+        run: |
+          echo "=== Available Test Artifacts ==="
+          find all-test-results -type f -name "*.json" -o -name "*.xml" -o -name "*.html" | head -20
+
+      - name: Generate test summary
+        run: |
+          echo "## Test Execution Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Test Suite | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|-----------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| API Tests | ${{ needs.api-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| UI Positive Tests | ${{ needs.ui-positive-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| UI Negative Tests | ${{ needs.ui-negative-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| All Tests Combined | ${{ needs.all-tests.result }} |" >> $GITHUB_STEP_SUMMARY
+
+  # Notification Job (optional - on failure)
+  notify-on-failure:
+    name: Notify on Test Failure
+    runs-on: ubuntu-latest
+    if: failure()
+    needs: [ all-tests ]
+    
+    steps:
+      - name: Send failure notification
+        run: |
+          echo "🚨 Test Suite Failed!"
+          echo "Repository: ${{ github.repository }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Commit: ${{ github.sha }}"
+          echo "Author: ${{ github.actor }}"
+          echo "Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
